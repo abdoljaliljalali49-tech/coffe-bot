@@ -353,7 +353,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ========== اجرای ربات ==========
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = app = Application.builder().token(BOT_TOKEN).updater(None).build()
 
     # ConversationHandler برای محاسبه گرم
     calc_conv = ConversationHandler(
