@@ -7,8 +7,8 @@ from telegram.ext import (
 )
 
 # ========== تنظیمات ==========
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-ADMIN_ID = 123456789  # آیدی عددی ادمین
+BOT_TOKEN = "9092864819:AAGlDGgaCEo87nn42wW206C5_8kQZAIps10"
+ADMIN_ID = 1066821685  # آیدی عددی ادمین
 
 DATA_FILE = "prices.json"
 
