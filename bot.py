@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import logging
+from aiohttp import web
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -290,7 +291,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("لغو شد. برای شروع مجدد /start بزنید.")
     return ConversationHandler.END
 
-async def main():
+def build_app():
     app = Application.builder().token(BOT_TOKEN).build()
 
     calc_conv = ConversationHandler(
@@ -329,19 +330,36 @@ async def main():
     app.add_handler(CallbackQueryHandler(admin_delete_select, pattern="^admdelete_"))
     app.add_handler(CallbackQueryHandler(admin_confirm_delete, pattern="^confirmdelete_"))
     app.add_handler(CallbackQueryHandler(back_main, pattern="^back_main$"))
+    return app
 
-    logger.info("✅ ربات در حال اجراست...")
+async def webhook_handler(request):
+    tg_app = request.app["tg_app"]
+    data = await request.json()
+    update = Update.de_json(data, tg_app.bot)
+    await tg_app.process_update(update)
+    return web.Response(text="OK")
 
-    await app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+async def health(request):
+    return web.Response(text="OK")
 
-    async with app:
-        await app.start()
-        await app.updater.start_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path="webhook"
-        )
-        await asyncio.Event().wait()
+async def main():
+    tg_app = build_app()
+    await tg_app.initialize()
+    await tg_app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+    await tg_app.start()
+
+    web_app = web.Application()
+    web_app["tg_app"] = tg_app
+    web_app.router.add_post("/webhook", webhook_handler)
+    web_app.router.add_get("/", health)
+
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+
+    logger.info(f"✅ ربات روی پورت {PORT} در حال اجراست...")
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
