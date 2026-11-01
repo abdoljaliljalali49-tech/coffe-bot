@@ -36,11 +36,17 @@ DEFAULT_DATA = {
     }
 }
 
-ENTER_GRAMS = 0
-ENTER_BUDGET = 1
-ADMIN_ENTER_PRICE = 2
-ADMIN_ADD_NAME = 3
-ADMIN_ADD_PRICE = 4
+# مراحل مکالمه
+(
+    SELECT_CALC_TYPE,
+    SELECT_CALC_COFFEE,
+    SELECT_MODE,
+    ENTER_GRAMS,
+    ENTER_BUDGET,
+    ADMIN_ENTER_PRICE,
+    ADMIN_ADD_NAME,
+    ADMIN_ADD_PRICE,
+) = range(8)
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -59,10 +65,11 @@ def to_english_digits(text):
         text = text.replace(d, str(i))
     return text.replace(",", "").replace("،", "")
 
+# ===== منوی اصلی =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("☕ مشاهده قیمت قهوه‌ها", callback_data="show_types")],
-        [InlineKeyboardButton("🧮 محاسبه قیمت", callback_data="calc_grams")],
+        [InlineKeyboardButton("🧮 محاسبه قیمت", callback_data="start_calc")],
     ]
     if update.effective_user.id == ADMIN_ID:
         keyboard.append([InlineKeyboardButton("⚙️ پنل ادمین — ویرایش قیمت", callback_data="admin_edit")])
@@ -72,6 +79,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.callback_query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
+# ===== نمایش قیمت‌ها =====
 async def show_types(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -87,45 +95,56 @@ async def show_coffees(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = load_data()
     coffees = data.get(coffee_type, {})
     text = f"☕ *قهوه‌های {coffee_type}*\n\n"
-    keyboard = []
     for name, price in coffees.items():
         text += f"• *{name}*: {price:,} تومان / کیلوگرم\n"
-        keyboard.append([InlineKeyboardButton(f"🧮 محاسبه — {name}", callback_data=f"calc_{coffee_type}||{name}")])
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="show_types")])
+    keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="show_types")]]
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def calc_grams_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ===== محاسبه — مرحله ۱: انتخاب نوع =====
+async def start_calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = load_data()
-    keyboard = [[InlineKeyboardButton(f"☕ {t}", callback_data=f"calctype_{t}")] for t in data]
+    keyboard = [[InlineKeyboardButton(f"☕ {t}", callback_data=f"ct_{t}")] for t in data]
     keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_main")])
-    await query.edit_message_text("ابتدا نوع قهوه را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(
+        "🧮 *محاسبه قیمت*\n\nابتدا نوع قهوه را انتخاب کنید:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SELECT_CALC_TYPE
 
-async def calc_select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ===== محاسبه — مرحله ۲: انتخاب قهوه =====
+async def calc_select_coffee_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    coffee_type = query.data[9:]
+    coffee_type = query.data[3:]  # حذف "ct_"
+    context.user_data["selected_type"] = coffee_type
     data = load_data()
-    keyboard = [[InlineKeyboardButton(name, callback_data=f"calc_{coffee_type}||{name}")] for name in data.get(coffee_type, {})]
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="calc_grams")])
-    await query.edit_message_text("نوع قهوه را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = [[InlineKeyboardButton(name, callback_data=f"cn_{name}")] for name in data.get(coffee_type, {})]
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_calc_type")])
+    await query.edit_message_text(
+        f"☕ *{coffee_type}*\n\nکدام قهوه را انتخاب کنید:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SELECT_CALC_COFFEE
 
-async def calc_select_coffee(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ===== محاسبه — مرحله ۳: انتخاب روش =====
+async def calc_select_coffee_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    raw = query.data[5:]
-    coffee_type, coffee_name = raw.split("||")
+    coffee_name = query.data[3:]  # حذف "cn_"
+    coffee_type = context.user_data.get("selected_type", "")
     data = load_data()
     price_per_kg = data[coffee_type][coffee_name]
-    context.user_data["selected_type"] = coffee_type
     context.user_data["selected_coffee"] = coffee_name
     context.user_data["price_per_kg"] = price_per_kg
 
     keyboard = [
-        [InlineKeyboardButton("⚖️ گرم دارم، قیمت میخوام", callback_data=f"mode_grams")],
-        [InlineKeyboardButton("💰 مبلغ دارم، گرم میخوام", callback_data=f"mode_budget")],
-        [InlineKeyboardButton("🔙 بازگشت", callback_data="calc_grams")]
+        [InlineKeyboardButton("⚖️ گرم دارم، قیمت میخوام", callback_data="mode_grams")],
+        [InlineKeyboardButton("💰 مبلغ دارم، گرم میخوام", callback_data="mode_budget")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_calc_coffee")]
     ]
     await query.edit_message_text(
         f"☕ *{coffee_name}*  |  {coffee_type}\n"
@@ -134,8 +153,9 @@ async def calc_select_coffee(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    return ConversationHandler.END
+    return SELECT_MODE
 
+# ===== محاسبه — مرحله ۴الف: ورود گرم =====
 async def mode_grams(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -150,6 +170,7 @@ async def mode_grams(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ENTER_GRAMS
 
+# ===== محاسبه — مرحله ۴ب: ورود مبلغ =====
 async def mode_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -164,6 +185,7 @@ async def mode_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ENTER_BUDGET
 
+# ===== محاسبه — دریافت گرم =====
 async def receive_grams(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = to_english_digits(update.message.text.strip())
     try:
@@ -180,7 +202,7 @@ async def receive_grams(update: Update, context: ContextTypes.DEFAULT_TYPE):
     price = (price_per_kg / 1000) * grams
 
     keyboard = [
-        [InlineKeyboardButton("🔄 محاسبه مجدد", callback_data=f"calc_{coffee_type}||{coffee_name}")],
+        [InlineKeyboardButton("🔄 محاسبه مجدد همین قهوه", callback_data="recalc")],
         [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_main")]
     ]
     await update.message.reply_text(
@@ -191,8 +213,9 @@ async def receive_grams(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    return ConversationHandler.END
+    return SELECT_MODE
 
+# ===== محاسبه — دریافت مبلغ =====
 async def receive_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = to_english_digits(update.message.text.strip())
     try:
@@ -209,7 +232,7 @@ async def receive_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
     grams = (budget / price_per_kg) * 1000
 
     keyboard = [
-        [InlineKeyboardButton("🔄 محاسبه مجدد", callback_data=f"calc_{coffee_type}||{coffee_name}")],
+        [InlineKeyboardButton("🔄 محاسبه مجدد همین قهوه", callback_data="recalc")],
         [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_main")]
     ]
     await update.message.reply_text(
@@ -220,8 +243,58 @@ async def receive_budget(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    return ConversationHandler.END
+    return SELECT_MODE
 
+# ===== دکمه محاسبه مجدد =====
+async def recalc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    coffee_name = context.user_data.get("selected_coffee", "")
+    coffee_type = context.user_data.get("selected_type", "")
+    price_per_kg = context.user_data.get("price_per_kg", 0)
+    keyboard = [
+        [InlineKeyboardButton("⚖️ گرم دارم، قیمت میخوام", callback_data="mode_grams")],
+        [InlineKeyboardButton("💰 مبلغ دارم، گرم میخوام", callback_data="mode_budget")],
+        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_main")]
+    ]
+    await query.edit_message_text(
+        f"☕ *{coffee_name}*  |  {coffee_type}\n"
+        f"💵 قیمت هر کیلو: *{price_per_kg:,}* تومان\n\n"
+        f"چه نوع محاسبه‌ای میخواید؟",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SELECT_MODE
+
+# ===== بازگشت در داخل مکالمه =====
+async def back_calc_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = load_data()
+    keyboard = [[InlineKeyboardButton(f"☕ {t}", callback_data=f"ct_{t}")] for t in data]
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_main")])
+    await query.edit_message_text(
+        "🧮 *محاسبه قیمت*\n\nابتدا نوع قهوه را انتخاب کنید:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SELECT_CALC_TYPE
+
+async def back_calc_coffee(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    coffee_type = context.user_data.get("selected_type", "")
+    data = load_data()
+    keyboard = [[InlineKeyboardButton(name, callback_data=f"cn_{name}")] for name in data.get(coffee_type, {})]
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_calc_type")])
+    await query.edit_message_text(
+        f"☕ *{coffee_type}*\n\nکدام قهوه را انتخاب کنید:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SELECT_CALC_COFFEE
+
+# ===== پنل ادمین =====
 async def admin_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -357,6 +430,7 @@ async def back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await start(update, context)
+    return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("لغو شد. برای شروع مجدد /start بزنید.")
@@ -365,35 +439,49 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def build_app():
     app = Application.builder().token(BOT_TOKEN).build()
 
+    # ConversationHandler اصلی محاسبه
     calc_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(calc_select_coffee, pattern="^calc_")],
+        entry_points=[CallbackQueryHandler(start_calc, pattern="^start_calc$")],
         states={
-            ENTER_GRAMS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_grams)],
-            ENTER_BUDGET: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_budget)],
+            SELECT_CALC_TYPE: [
+                CallbackQueryHandler(calc_select_coffee_type, pattern="^ct_"),
+                CallbackQueryHandler(back_main, pattern="^back_main$"),
+            ],
+            SELECT_CALC_COFFEE: [
+                CallbackQueryHandler(calc_select_coffee_name, pattern="^cn_"),
+                CallbackQueryHandler(back_calc_type, pattern="^back_calc_type$"),
+            ],
+            SELECT_MODE: [
+                CallbackQueryHandler(mode_grams, pattern="^mode_grams$"),
+                CallbackQueryHandler(mode_budget, pattern="^mode_budget$"),
+                CallbackQueryHandler(recalc, pattern="^recalc$"),
+                CallbackQueryHandler(back_calc_coffee, pattern="^back_calc_coffee$"),
+                CallbackQueryHandler(back_main, pattern="^back_main$"),
+            ],
+            ENTER_GRAMS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_grams),
+            ],
+            ENTER_BUDGET: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_budget),
+            ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=False
-    )
-
-    mode_conv = ConversationHandler(
-        entry_points=[
-            CallbackQueryHandler(mode_grams, pattern="^mode_grams$"),
-            CallbackQueryHandler(mode_budget, pattern="^mode_budget$"),
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("start", start),
         ],
-        states={
-            ENTER_GRAMS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_grams)],
-            ENTER_BUDGET: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_budget)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=False
+        per_message=False,
+        allow_reentry=True,
     )
 
+    # ConversationHandler ادمین — ویرایش قیمت
     admin_edit_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_edit_price_start, pattern="^admedit_")],
         states={ADMIN_ENTER_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_receive_price)]},
         fallbacks=[CommandHandler("cancel", cancel)],
         per_message=False
     )
+
+    # ConversationHandler ادمین — افزودن قهوه
     admin_add_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_add_select_type, pattern="^addto_")],
         states={
@@ -406,13 +494,10 @@ def build_app():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(calc_conv)
-    app.add_handler(mode_conv)
     app.add_handler(admin_edit_conv)
     app.add_handler(admin_add_conv)
     app.add_handler(CallbackQueryHandler(show_types, pattern="^show_types$"))
     app.add_handler(CallbackQueryHandler(show_coffees, pattern="^type_"))
-    app.add_handler(CallbackQueryHandler(calc_grams_menu, pattern="^calc_grams$"))
-    app.add_handler(CallbackQueryHandler(calc_select_type, pattern="^calctype_"))
     app.add_handler(CallbackQueryHandler(admin_edit, pattern="^admin_edit$"))
     app.add_handler(CallbackQueryHandler(admin_select_type, pattern="^admtype_"))
     app.add_handler(CallbackQueryHandler(admin_add_start, pattern="^admin_add$"))
