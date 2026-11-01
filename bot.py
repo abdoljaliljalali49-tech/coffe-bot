@@ -11,9 +11,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ========== تنظیمات ==========
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-ADMIN_ID = 123456789
-WEBHOOK_URL = "YOUR_RENDER_URL_HERE"  # مثال: https://coffe-bot.onrender.com
+BOT_TOKEN = "9092864819:AAGlDGgaCEo87nn42wW206C5_8kQZAIps10"
+ADMIN_ID = 1066821685
+WEBHOOK_URL = "https://coffe-bot-01lg.onrender.com"
 PORT = int(os.environ.get("PORT", 10000))
 DATA_FILE = "prices.json"
 
