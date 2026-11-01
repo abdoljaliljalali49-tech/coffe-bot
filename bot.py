@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -10,7 +11,6 @@ from telegram.ext import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ========== تنظیمات ==========
 BOT_TOKEN = "9092864819:AAGlDGgaCEo87nn42wW206C5_8kQZAIps10"
 ADMIN_ID = 1066821685
 WEBHOOK_URL = "https://coffe-bot-01lg.onrender.com"
@@ -290,7 +290,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("لغو شد. برای شروع مجدد /start بزنید.")
     return ConversationHandler.END
 
-def main():
+async def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     calc_conv = ConversationHandler(
@@ -330,13 +330,18 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_confirm_delete, pattern="^confirmdelete_"))
     app.add_handler(CallbackQueryHandler(back_main, pattern="^back_main$"))
 
-    logger.info("ربات با Webhook در حال اجراست...")
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        webhook_url=f"{WEBHOOK_URL}/webhook",
-        url_path="webhook"
-    )
+    logger.info("✅ ربات در حال اجراست...")
+
+    await app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+
+    async with app:
+        await app.start()
+        await app.updater.start_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path="webhook"
+        )
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
